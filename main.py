@@ -13,86 +13,85 @@ import random
 import argparse
 import sys
 
-from util.get_acc import cal_cfm
-
+from util.get_acc import cal_cfm,get_topn_accuracy
+import logging
 
 # ============== Get Configuration =================
 def get_arg():
     cfg=argparse.ArgumentParser()
-    cfg.add_argument('--exp_name',default='fold0_optimize_text_of_normaldriving')
+    cfg.add_argument('--exp_name',default='try')
     cfg.add_argument('--epochs',default=100)
     cfg.add_argument('--train',action='store_true',default=True)
     
-    cfg.add_argument('--data_path',default='/home/jchen152/workspace/Deep_Insigth_Project/Zero_Shot/Data/synDD_1fps')
+    cfg.add_argument('--data_path',default='/home/jchen152/workspace/Deep_Insigth_Project/Zero_Shot/Data/syn1fps')
     cfg.add_argument('--project_path',default='/home/jchen152/workspace/Deep_Insigth_Project/Zero_Shot')
 
-    cfg.add_argument('--batch_size',default=5,type=int)
-    cfg.add_argument('--fold',default=0,type=int)
+    cfg.add_argument('--batch_size',default=5)
+    cfg.add_argument('--fold',type=int,default=0)
     cfg.add_argument('--video_based',default=True)
-   
     
+  
     return cfg.parse_args()
+
 cfg=get_arg()
 
 
+# ============= create logging ==============
+def get_logger(file_name='accuracy.log'):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s, %(name)s, %(message)s')
+
+    ########### this is used to set the log file ##########
+    file_path=os.path.join(cfg.project_path,'Exp',cfg.exp_name)
+    if not os.path.exists(file_path):
+        os.mkdir(file_path)
+    
+    
+    file_handler = logging.FileHandler(os.path.join(file_path,file_name))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    #######################################################
 
 
-# ======= create txt ==========
-# label_map = {
-# 	0:	"Normal Driving",   # *
-# 	1:	"Drinking",                 # *
-# 	2:	"Phone Call right",        # *
-# 	3:	"Phone Call left",         # *
-# 	4:	"Eating",
-# 	5:	"Text Left",
-# 	6:	"Text reft",
-# 	7:	"Hair or makeup",
-# 	8:	"Reaching behind",
-# 	9:	"Adjust control panel",
-# 	10:	"Pick up from floor (Driver)",
-# 	11:	"Pick up from floor (Passenger)",
-# 	12:	"Talk to passenger at the right",
-# 	13:	"Talk to passenger at backseat",
-# 	14:	"yawning",
-# 	15:	"Hand on head",
-# 	16:	"Singing with music",
-# 	17:	"shaking or dancing with music",
-# }
-# text_list=list(label_map.values())[:8]
+    ######### this is used to set the output in the terminal/screen ########
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    #################################################################
+
+    ####### add the log file handler and terminal handerler to the logger #######
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+    ##############################################################################
+
+    return logger
+logger=get_logger()
+# ============================================
+
+
+
+
+
+
+
 
 
 
 class_mapping = {
-    0:"driver is driving with hands on the steering wheel",
-    1:"driver is adjusting his or her hair while driving a car",
-    2:"driver is drinking water from a bottle while driving a car",
-    3:"driver is eating while driving a car",
-    4:"driver is picking something from floor while driving a car",
-    5:"driver is reaching behind to the backseat while driving a car",
-    6:"driver is singing a song with music and smiling wiled driving",
-    7:"driver is talking to the phone on hand while driving a car",
-    8:"driver is yawning while driving a car"}
+    0:"driver is adjusting his or her hair while driving a car",
+    1:"driver is drinking water from a bottle while driving a car",
+    2:"driver is eating while driving a car",
+    3:"driver is picking something from floor while driving a car",
+    4:"driver is reaching behind to the backseat while driving a car",
+    5:"driver is singing a song with music and smiling while driving",
+    6:"driver is talking to the phone on hand while driving a car",
+    7:"driver is yawning while driving a car"}
 
 
-# class_mapping = {
-#     0:"driver is driving with hands on the steering wheel",
-#     1:"driver is adjusting his or her hair while driving a car",
-#     2:"driver is drinking water from a bottle while driving a car",
-#     3:"driver is eating while driving a car",
-#     4:"driver is picking something from floor while driving a car",
-#     5:"driver is reaching behind to the backseat while driving a car",
-#     6:"driver is talking to the phone on hand or singing while driving a car",
-#     7:"driver is yawning while driving a car"}
 
 
-# class_mapping = {
-#     0:"driver is adjusting his or her hair while driving a car",
-#     1:"driver is drinking water from a bottle while driving a car",
-#     2:"driver is eating while driving a car",
-#     3:"driver is picking something from floor while driving a car",
-#     4:"driver is reaching behind to the backseat while driving a car",
-#     5:"driver is singing a song with music and smiling wiled driving",
-#     6:"driver is talking to the phone on hand while driving a car"}
+
 text_list=list(class_mapping.values())
 
 # =================================
@@ -100,8 +99,7 @@ text_list=list(class_mapping.values())
 
 
 def main():
-    os.environ['CUDA_LAUNCH_BLOCKING']='1'
-
+    
     seed=0
     random.seed(seed)
     np.random.seed(seed)
@@ -120,19 +118,47 @@ def main():
         train_model(model,train_loader,valid_loader,cfg.exp_name,cuda)
     
     else:
-        # pth_folder=os.path.join('./pth_file',exp_name)
-        # test(model,test_loader,pth_folder=pth_folder)
-        print('not implemented yet')
+       
+        test(model,valid_loader,pth_path=cfg.weight_path)
         
-def test(model,data_loader,pth_folder):
-    pass
+        
+def test(model,data_loader,pth_path):
+
+    
+    # === uncomment this while testing =====
+    # model.load_state_dict(torch.load(pth_path)['model_state'])
+    # ======================================
+    device=torch.device('cuda:{}'.format(0))
+    model.to(device)
+    tqdm_bar=tqdm(data_loader)
+    
+    result=[]
+    
+    with torch.no_grad():
+        for (x_cpu,y_cpu,path) in tqdm_bar:
+            x=x_cpu.to(device)
+            video_output=model(x)
+            text_output=model.text_module(text_list)
+            video_embedding = video_output['video_embedding']
+            text_embedding = text_output['text_embedding']
+            logits = torch.matmul(text_embedding, video_embedding.t()).t()
+            pred=torch.argmax(logits,-1).detach().cpu()
+            for (i,j,k) in zip(path,pred,y_cpu.detach()):
+                result.append([i,j.item(),k.item()])
+    
+    save_path=os.path.join('/data1/jiajing/worksapce/Project/Zero_Shot/Major_Voting_Result',cfg.exp_name)
+    np.save(save_path,result)
+    
+    
+            
 
 
 
 def train_model(model,train_loader,valid_loader,exp_name,cuda_n):
     assert torch.cuda.is_available()
     epoch_acc=[]
-
+    global pred_result_with_path
+    pred_result_with_path ={'path':[],'pred':[],'gt':[]}
     #这里应该用GPU
     device=torch.device('cuda:{}'.format(cuda_n))
     model=model.to(device)
@@ -172,10 +198,12 @@ def train_model(model,train_loader,valid_loader,exp_name,cuda_n):
         #epsum['labels] is (batch,4096)
         
         epsum=run_one_epoch(model,iteration,"valid",loss_func=loss_func)
-        mean_acc=np.mean(epsum['acc'])
-        epoch_acc.append(mean_acc)
+        mean_acc_top1=np.mean(epsum['top1_acc'])
+        mean_acc_top3=np.mean(epsum['top3_acc'])
         
-        summary={'meac':mean_acc}
+        epoch_acc.append(mean_acc_top1)
+        
+        summary={'acc_top1':mean_acc_top1,'acc_top3':mean_acc_top3}
         summary["loss/valid"]=np.mean(epsum['losses'])
         return summary,epsum['cfm']
 
@@ -208,13 +236,21 @@ def train_model(model,train_loader,valid_loader,exp_name,cuda_n):
         valid_summary,confusion_mat=eval_one_epoch()
         summary={**train_summary,**valid_summary}
         lr_schedule.step()
+        
+        top1_accuracy=valid_summary['acc_top1']
+        top3_accuracy=valid_summary['acc_top3']
+        
+        
+        logger.debug('epoch {}: Top1_accuracy: {}. Top3_accuracy: {}. Highest_top1: {}'.format(e,top1_accuracy,top3_accuracy,np.max(epoch_acc)))
+    
         #save checkpoint
         if np.max(epoch_acc)==epoch_acc[-1]:
             summary_saved={**summary,
                             'model_state':model.state_dict(),
                             'optimizer_state':optimizer.state_dict(),
                             'cm':confusion_mat,
-                            'cls_map':class_mapping}
+                            'cls_map':class_mapping,
+                            'pred_result_with_path':pred_result_with_path}
 
 
             # torch.save(summary_saved,'./pth_file/{0}/epoch_{1}'.format(exp_name,e))
@@ -236,10 +272,10 @@ def run_one_epoch(model,tqdm_iter,mode,loss_func=None,optimizer=None,loss_interv
             param.requires_grad=False
             
     confusion_mat=np.zeros((len(text_list),len(text_list)))
-    summary={"losses":[],"acc":[]}
+    summary={"losses":[],"top1_acc":[],"top3_acc":[]}
     device=next(model.parameters()).device
 
-    for i,(x_cpu,y_cpu) in enumerate(tqdm_iter):
+    for i,(x_cpu,y_cpu,img_path) in enumerate(tqdm_iter):
         x,y=x_cpu.to(device),y_cpu.to(device)
 
         if mode=='train':
@@ -275,14 +311,26 @@ def run_one_epoch(model,tqdm_iter,mode,loss_func=None,optimizer=None,loss_interv
             
             batch_cf=cal_cfm(logits,y_cpu,len(text_list))
             confusion_mat+=batch_cf
-            batch_acc=np.trace(batch_cf)/np.sum(batch_cf)
-            summary['acc'].append(batch_acc)
-
+            # batch_acc=np.trace(batch_cf)/np.sum(batch_cf)
+            
+            top1_accuracy=get_topn_accuracy(logits.cpu().detach(),y_cpu,1)
+            top3_accuracy=get_topn_accuracy(logits.cpu().detach(),y_cpu,3)
+            
+            
+            summary['top1_acc'].append(top1_accuracy)
+            summary['top3_acc'].append(top3_accuracy)
+            
+            pred_result_with_path['path']+=list(img_path)
+            pred_result_with_path['pred'].append(logits.cpu().detach().numpy())
+            pred_result_with_path['gt'].append(y_cpu.detach().numpy())
+            
+            
+            
         
         # summary['logits']+=[logits.cpu().detach().numpy()]
         # summary['labels']+=[y_cpu.numpy()]
             if i%loss_interval==0:
-                tqdm_iter.set_description("mea_ac: %.3f"%(np.mean(summary['acc'])))
+                tqdm_iter.set_description("mea_ac: %.3f"%(np.mean(summary['top1_acc'])))
 
 
     if mode!='train':
