@@ -200,10 +200,11 @@ def train_model(model,train_loader,valid_loader,exp_name,cuda_n):
         epsum=run_one_epoch(model,iteration,"valid",loss_func=loss_func)
         mean_acc_top1=np.mean(epsum['top1_acc'])
         mean_acc_top3=np.mean(epsum['top3_acc'])
+        mean_acc_top5=np.mean(epsum['top5_acc'])
         
         epoch_acc.append(mean_acc_top1)
         
-        summary={'acc_top1':mean_acc_top1,'acc_top3':mean_acc_top3}
+        summary={'acc_top1':mean_acc_top1,'acc_top3':mean_acc_top3,'acc_top5':mean_acc_top5}
         summary["loss/valid"]=np.mean(epsum['losses'])
         return summary,epsum['cfm']
 
@@ -239,9 +240,9 @@ def train_model(model,train_loader,valid_loader,exp_name,cuda_n):
         
         top1_accuracy=valid_summary['acc_top1']
         top3_accuracy=valid_summary['acc_top3']
+        top5_accuracy=valid_summary['acc_top5']
         
-        
-        logger.debug('epoch {}: Top1_accuracy: {}. Top3_accuracy: {}. Highest_top1: {}'.format(e,top1_accuracy,top3_accuracy,np.max(epoch_acc)))
+        logger.debug('epoch {}: Top1_accuracy: {}. Top3_accuracy: {}. Top5_accuracy: {} . Highest_top1: {}'.format(e,top1_accuracy,top3_accuracy,top5_accuracy,np.max(epoch_acc)))
     
         #save checkpoint
         if np.max(epoch_acc)==epoch_acc[-1]:
@@ -272,7 +273,7 @@ def run_one_epoch(model,tqdm_iter,mode,loss_func=None,optimizer=None,loss_interv
             param.requires_grad=False
             
     confusion_mat=np.zeros((len(text_list),len(text_list)))
-    summary={"losses":[],"top1_acc":[],"top3_acc":[]}
+    summary={"losses":[],"top1_acc":[],"top3_acc":[],"top5_acc":[]}
     device=next(model.parameters()).device
 
     for i,(x_cpu,y_cpu,img_path) in enumerate(tqdm_iter):
@@ -315,10 +316,11 @@ def run_one_epoch(model,tqdm_iter,mode,loss_func=None,optimizer=None,loss_interv
             
             top1_accuracy=get_topn_accuracy(logits.cpu().detach(),y_cpu,1)
             top3_accuracy=get_topn_accuracy(logits.cpu().detach(),y_cpu,3)
-            
+            top5_accuracy=get_topn_accuracy(logits.cpu().detach(),y_cpu,5)
             
             summary['top1_acc'].append(top1_accuracy)
             summary['top3_acc'].append(top3_accuracy)
+            summary['top5_acc'].append(top5_accuracy)
             
             pred_result_with_path['path']+=list(img_path)
             pred_result_with_path['pred'].append(logits.cpu().detach().numpy())
